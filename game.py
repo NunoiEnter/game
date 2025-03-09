@@ -1,23 +1,23 @@
 import pygame
-import random
 import sys
+import random
 import os
 
-# เริ่มต้น pygame
+# Initialize pygame
 pygame.init()
+pygame.font.init()
 
-# ตั้งค่าหน้าจอ
-WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Chicken Coin Runner")
-
-# โหลดฟอนต์
-if os.path.exists("THSarabunNew.ttf"):
-    font = pygame.font.Font("THSarabunNew.ttf", 32)
-    small_font = pygame.font.Font("THSarabunNew.ttf", 24)
-else:
-    font = pygame.font.SysFont(None, 32)
-    small_font = pygame.font.SysFont(None, 24)
+# ค่าคงที่ของเกม
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+GRAVITY = 0.75
+GROUND_HEIGHT = 500
+COIN_COUNT = 100
+QUESTIONS_TO_WIN = 3
+QUESTION_TIME = 30 * 1000  # 30 วินาที
+BONUS_TIME = 5 * 1000  # 5 วินาที 
+COINS_FOR_BONUS = 20
+LEVEL_WIDTH = 5000  # ความกว้างของด่าน
 
 # สี
 WHITE = (255, 255, 255)
@@ -26,292 +26,492 @@ YELLOW = (255, 255, 0)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
-SKY_BLUE = (135, 206, 235)
+LIGHT_BLUE = (173, 216, 230)
+BROWN = (139, 69, 19)
 
-# โหลดรูปภาพ
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("ไก่น้อยเก็บเหรียญ")
+clock = pygame.time.Clock()
+
+try:
+    font = pygame.font.Font("THSarabunNew.ttf", 32)
+    big_font = pygame.font.Font("THSarabunNew.ttf", 48)
+except:
+    font = pygame.font.SysFont(None, 32)
+    big_font = pygame.font.SysFont(None, 48)
+
 try:
     chicken_img = pygame.image.load("chicken.png")
     chicken_img = pygame.transform.scale(chicken_img, (50, 50))
     coin_img = pygame.image.load("coin.png")
     coin_img = pygame.transform.scale(coin_img, (30, 30))
-except pygame.error:
-    # สร้างรูปทดแทนถ้าไม่มีไฟล์
+except:
     chicken_img = pygame.Surface((50, 50), pygame.SRCALPHA)
     pygame.draw.circle(chicken_img, (255, 255, 0), (25, 25), 25)
     coin_img = pygame.Surface((30, 30), pygame.SRCALPHA)
-    pygame.draw.circle(coin_img, (255, 215, 0), (15, 15), 15)
+    pygame.draw.circle(coin_img, YELLOW, (15, 15), 15)
 
-# คำถามและคำตอบ
 questions = [
     {
         "question": "การบรรจุชิดที่สุดแบบลูกบาศก์ ชนิดไหนบรรจุได้ชิดที่สุด",
         "choices": ["1.) ccp", "2.) hcp", "3.) fcc"],
-        "answer": 0
+        "correct": 0  
     },
     {
         "question": "log 10 มีค่าเท่าไหร่",
         "choices": ["1.) 10", "2.) 533577755", "3.) 1"],
-        "answer": 2
+        "correct": 2  
     },
     {
         "question": "แนวคิด สิ่งมีชีวิตเกิดจากสิ่งไม่มีชีวิต เรียกว่าอะไร",
         "choices": ["1.) special creation", "2.) Spontaneous generation", "3.) Cosmozonic creation"],
-        "answer": 1
+        "correct": 1  
     }
 ]
 
-# คลาสไก่
+# คลาสตัวละครไก่
 class Chicken:
     def __init__(self):
-        self.x = WIDTH // 2
-        self.y = HEIGHT - 100
-        self.width = 50
-        self.height = 50
-        self.speed = 10
-        self.lanes = [WIDTH // 4, WIDTH // 2, 3 * WIDTH // 4]
-        self.current_lane = 1
-
-    def move(self, direction):
-        if direction == "left" and self.current_lane > 0:
-            self.current_lane -= 1
-        elif direction == "right" and self.current_lane < 2:
-            self.current_lane += 1
-        self.x = self.lanes[self.current_lane]
-
-    def draw(self):
-        screen.blit(chicken_img, (self.x - self.width // 2, self.y - self.height // 2))
-
-    def get_rect(self):
-        return pygame.Rect(self.x - self.width // 2, self.y - self.height // 2, self.width, self.height)
+        self.x = 100
+        self.y = GROUND_HEIGHT - 50
+        self.vel_x = 5 
+        self.vel_y = 0
+        self.jumping = False
+        self.on_ground = True
+        self.image = chicken_img
+        self.rect = self.image.get_rect(center=(self.x, self.y))
+        self.world_x = 0 
+        
+    def update(self, keys, platforms):
+        move_x = 0
+        
+        # การเคลื่อนที่ซ้าย-ขวา
+        if keys[pygame.K_LEFT]:
+            move_x = -self.vel_x
+        if keys[pygame.K_RIGHT]:
+            move_x = self.vel_x
+            
+        # อัพเดทตำแหน่งในโลก
+        self.world_x += move_x
+        self.world_x = max(0, min(self.world_x, LEVEL_WIDTH - SCREEN_WIDTH // 2))
+        
+        # กำหนดตำแหน่งบนหน้าจอ
+        if self.world_x < SCREEN_WIDTH // 2:
+            self.x = self.world_x
+        elif self.world_x > LEVEL_WIDTH - SCREEN_WIDTH // 2:
+            self.x = SCREEN_WIDTH - (LEVEL_WIDTH - self.world_x)
+        else:
+            self.x = SCREEN_WIDTH // 2
+            
+        # แรงโน้มถ่วง
+        self.vel_y += GRAVITY
+        self.y += self.vel_y
+        
+        # ตรวจสอบการชนกับพื้น
+        self.on_ground = False
+        for platform in platforms:
+            rel_x = platform.x - (self.world_x - self.x)
+            if (self.y + 25 >= platform.y and
+                self.y + 25 <= platform.y + 10 and
+                self.x + 25 >= rel_x and
+                self.x - 25 <= rel_x + platform.width):
+                self.y = platform.y - 25
+                self.vel_y = 0
+                self.jumping = False
+                self.on_ground = True
+                break
+        
+        # ถ้าตกพ้นพื้น
+        if self.y > SCREEN_HEIGHT:
+            return False
+                
+        # อัพเดทตำแหน่ง
+        self.rect.center = (self.x, self.y)
+        return True
+        
+    def jump(self):
+        if self.on_ground:
+            self.vel_y = -15
+            self.jumping = True
+            self.on_ground = False
+            
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
 
 # คลาสเหรียญ
 class Coin:
-    def __init__(self):
-        self.lanes = [WIDTH // 4, WIDTH // 2, 3 * WIDTH // 4]
-        self.x = random.choice(self.lanes)
-        self.y = -30
-        self.width = 30
-        self.height = 30
-        self.speed = 5
+    def __init__(self, world_x, y):
+        self.world_x = world_x
+        self.y = y
+        self.image = coin_img
+        self.rect = self.image.get_rect(center=(0, self.y))  # x จะคำนวณในแต่ละเฟรม
+        self.collected = False
+        
+    def update(self, camera_x):
+        rel_x = self.world_x - camera_x
+        if 0 <= rel_x <= SCREEN_WIDTH:
+            self.rect.centerx = rel_x
+            return True
+        return False
+        
+    def draw(self, screen):
+        screen.blit(self.image, self.rect)
 
-    def update(self):
-        self.y += self.speed
-        return self.y > HEIGHT
+# คลาสแพลตฟอร์ม
+class Platform:
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        
+    def update(self, camera_x):
+        rel_x = self.x - camera_x
+        if rel_x + self.width >= 0 and rel_x <= SCREEN_WIDTH:
+            self.rect.x = rel_x
+            self.rect.y = self.y
+            return True
+        return False
+        
+    def draw(self, screen):
+        rel_x = self.rect.x
+        pygame.draw.rect(screen, BROWN, (rel_x, self.y, self.width, self.height))
 
-    def draw(self):
-        screen.blit(coin_img, (self.x - self.width // 2, self.y - self.height // 2))
+# คลาสอุปสรรค
+class Obstacle:
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        
+    def update(self, camera_x):
+        rel_x = self.x - camera_x
+        if rel_x + self.width >= 0 and rel_x <= SCREEN_WIDTH:
+            self.rect.x = rel_x
+            self.rect.y = self.y
+            return True
+        return False
+        
+    def draw(self, screen):
+        rel_x = self.rect.x
+        pygame.draw.rect(screen, RED, (rel_x, self.y, self.width, self.height))
 
-    def get_rect(self):
-        return pygame.Rect(self.x - self.width // 2, self.y - self.height // 2, self.width, self.height)
-
-# ฟังก์ชันแสดงข้อความ
-def draw_text(text, font, color, x, y, centered=False):
-    text_surface = font.render(text, True, color)
-    if centered:
-        text_rect = text_surface.get_rect(center=(x, y))
-    else:
-        text_rect = text_surface.get_rect(topleft=(x, y))
-    screen.blit(text_surface, text_rect)
-
-# ฟังก์ชันแสดงคำถาม
-def show_question(question_data, remaining_time, bonus_time):
-    total_time = 30 + bonus_time
+# สร้างด่าน
+def create_level():
+    platforms = []
+    coins = []
+    obstacles = []
     
-    # วาดพื้นหลัง
-    screen.fill(SKY_BLUE)
+    # สร้างพื้นหลัก
+    ground_segments = []
+    segment_width = 500
+    gap_width = 200
     
-    # วาดคำถาม
-    draw_text(question_data["question"], font, BLACK, WIDTH // 2, 100, True)
+    x = 0
+    while x < LEVEL_WIDTH:
+        ground_segments.append((x, x + segment_width))
+        x += segment_width + gap_width
     
-    # วาดตัวเลือก
-    for i, choice in enumerate(question_data["choices"]):
-        y_pos = 200 + i * 80
-        pygame.draw.rect(screen, WHITE, (150, y_pos - 30, WIDTH - 300, 60), border_radius=10)
-        draw_text(choice, font, BLACK, WIDTH // 2, y_pos, True)
+    for start, end in ground_segments:
+        platforms.append(Platform(start, GROUND_HEIGHT, end - start, 100))
     
-    # วาดเวลา
-    draw_text(f"เวลา: {remaining_time:.1f} วินาที", font, BLACK, WIDTH // 2, 50, True)
+    # สร้างแพลตฟอร์มเพิ่มเติม
+    num_platforms = 30
+    for _ in range(num_platforms):
+        x = random.randint(200, LEVEL_WIDTH - 200)
+        y = random.randint(300, GROUND_HEIGHT - 50)
+        width = random.randint(50, 200)
+        platforms.append(Platform(x, y, width, 20))
+    
+    # # สร้างอุปสรรค
+    # num_obstacles = 20
+    # for _ in range(num_obstacles):
+    #     x = random.randint(300, LEVEL_WIDTH - 300)
+    #     y = random.randint(GROUND_HEIGHT - 100, GROUND_HEIGHT - 20)
+    #     width = random.randint(30, 70)
+    #     height = random.randint(30, 80)
+    #     obstacles.append(Obstacle(x, y, width, height))
+    
+    # สร้างเหรียญ
+    for _ in range(COIN_COUNT):
+        # หาแพลตฟอร์มสุ่ม
+        platform = random.choice(platforms)
+        x = random.randint(int(platform.x), int(platform.x + platform.width - 30))
+        y = platform.y - random.randint(40, 100)
+        coins.append(Coin(x, y))
+    
+    # เพิ่มเหรียญบนทางตรง
+    for segment_start, segment_end in ground_segments:
+        for _ in range(5):
+            x = random.randint(segment_start, segment_end - 30)
+            y = GROUND_HEIGHT - random.randint(40, 120)
+            coins.append(Coin(x, y))
+    
+    return platforms, coins, obstacles
 
-# ฟังก์ชันแสดงหน้าจอแพ้
-def show_game_over(coins_collected, questions_correct):
-    screen.fill(SKY_BLUE)
-    draw_text("Game Over!", font, RED, WIDTH // 2, HEIGHT // 3, True)
+# ฟังก์ชันหน้าคำถาม
+def question_screen(question_index, bonus_time):
+    question = questions[question_index]
+    timer = QUESTION_TIME + bonus_time
+    selected = None
     
+    while timer > 0:
+        current_time = pygame.time.get_ticks()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return ask_exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_q:
+                    if ask_exit():
+                        return False
+                elif event.key == pygame.K_1:
+                    selected = 0
+                elif event.key == pygame.K_2:
+                    selected = 1
+                elif event.key == pygame.K_3:
+                    selected = 2
+                elif event.key == pygame.K_RETURN and selected is not None:
+                    return selected == question["correct"]
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                # ตรวจสอบว่าคลิกที่ตัวเลือกใด
+                for i in range(3):
+                    choice_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, 250 + i * 70, 400, 50)
+                    if choice_rect.collidepoint(mouse_pos):
+                        selected = i
+                        return selected == question["correct"]
+                    
+        # วาดพื้นหลัง
+        screen.fill(LIGHT_BLUE)
+        
+        # วาดคำถาม
+        question_text = font.render(question["question"], True, BLACK)
+        question_rect = question_text.get_rect(center=(SCREEN_WIDTH // 2, 150))
+        screen.blit(question_text, question_rect)
+        
+        # วาดตัวเลือก
+        for i, choice in enumerate(question["choices"]):
+            choice_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, 250 + i * 70, 400, 50)
+            color = BLUE if selected == i else WHITE
+            pygame.draw.rect(screen, color, choice_rect)
+            pygame.draw.rect(screen, BLACK, choice_rect, 2)
+            
+            choice_text = font.render(choice, True, BLACK)
+            choice_text_rect = choice_text.get_rect(center=choice_rect.center)
+            screen.blit(choice_text, choice_text_rect)
+            
+        # วาดเวลา
+        time_left = max(0, timer - (pygame.time.get_ticks() - current_time))
+        timer = time_left
+        seconds_left = time_left // 1000
+        time_text = font.render(f"เวลา: {seconds_left} วินาที", True, BLACK)
+        time_rect = time_text.get_rect(topright=(SCREEN_WIDTH - 20, 20))
+        screen.blit(time_text, time_rect)
+        
+        pygame.display.flip()
+        clock.tick(60)
+        
+    # หมดเวลา
+    return False
+
+# ฟังก์ชันหน้าจบเกม
+def game_over_screen(score, correct_answers):
     multiplier = 0
-    if questions_correct == 1:
+    if correct_answers == 1:
         multiplier = 2
-    elif questions_correct == 2:
+    elif correct_answers == 2:
         multiplier = 4
-    elif questions_correct == 3:
+    elif correct_answers == 3:
         multiplier = 6
-    
-    final_score = coins_collected * multiplier if multiplier > 0 else coins_collected
-    
-    draw_text(f"เก็บได้: {coins_collected} เหรียญ", font, BLACK, WIDTH // 2, HEIGHT // 2 - 30, True)
-    draw_text(f"ตอบถูก: {questions_correct} ข้อ (x{multiplier if multiplier > 0 else 1})", font, BLACK, WIDTH // 2, HEIGHT // 2 + 10, True)
-    draw_text(f"คะแนนสุดท้าย: {final_score}", font, BLACK, WIDTH // 2, HEIGHT // 2 + 50, True)
-    draw_text("กด SPACE เพื่อเล่นใหม่", font, BLACK, WIDTH // 2, HEIGHT // 2 + 100, True)
-    draw_text("กด Q เพื่อออกจากเกม", font, BLACK, WIDTH // 2, HEIGHT // 2 + 140, True)
-
-# ฟังก์ชันถามยืนยันการออกจากเกม
-def confirm_exit():
-    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 128))
-    screen.blit(overlay, (0, 0))
-    
-    pygame.draw.rect(screen, WHITE, (WIDTH // 4, HEIGHT // 3, WIDTH // 2, HEIGHT // 3), border_radius=20)
-    draw_text("คุณต้องการออกจากเกมหรือไม่?", font, BLACK, WIDTH // 2, HEIGHT // 2 - 30, True)
-    draw_text("Y - ใช่", font, BLACK, WIDTH // 2, HEIGHT // 2 + 20, True)
-    draw_text("N - ไม่", font, BLACK, WIDTH // 2, HEIGHT // 2 + 60, True)
-    
-    pygame.display.flip()
+        
+    final_score = score * multiplier if multiplier > 0 else score
     
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_y:
-                    pygame.quit()
-                    sys.exit()
-                if event.key == pygame.K_n:
-                    return
-
-def main():
-    clock = pygame.time.Clock()
-    chicken = Chicken()
-    coins = []
-    coins_collected = 0
-    spawn_timer = 0
-    game_state = "playing"  # playing, question, game_over
-    current_question = 0
-    question_time = 0
-    bonus_time = 0
-    questions_correct = 0
-    special_coins = 0  # นับเหรียญพิเศษทุก 20 เหรียญ
-    
-    running = True
-    while running:
-        # จัดการอินพุต
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_q:
-                    confirm_exit()
-                
-                if game_state == "playing":
-                    if event.key == pygame.K_LEFT:
-                        chicken.move("left")
-                    elif event.key == pygame.K_RIGHT:
-                        chicken.move("right")
-                
-                elif game_state == "question":
-                    if event.key in [pygame.K_1, pygame.K_KP1] or event.key == pygame.K_a:
-                        if questions[current_question]["answer"] == 0:
-                            questions_correct += 1
-                            game_state = "playing"
-                            current_question += 1
-                            coins_collected = 0
-                            special_coins = 0
-                        else:
-                            game_state = "game_over"
-                    
-                    elif event.key in [pygame.K_2, pygame.K_KP2] or event.key == pygame.K_b:
-                        if questions[current_question]["answer"] == 1:
-                            questions_correct += 1
-                            game_state = "playing"
-                            current_question += 1
-                            coins_collected = 0
-                            special_coins = 0
-                        else:
-                            game_state = "game_over"
-                    
-                    elif event.key in [pygame.K_3, pygame.K_KP3] or event.key == pygame.K_c:
-                        if questions[current_question]["answer"] == 2:
-                            questions_correct += 1
-                            game_state = "playing"
-                            current_question += 1
-                            coins_collected = 0
-                            special_coins = 0
-                        else:
-                            game_state = "game_over"
-                
-                elif game_state == "game_over":
-                    if event.key == pygame.K_SPACE:
-                        # เริ่มเกมใหม่
-                        chicken = Chicken()
-                        coins = []
-                        coins_collected = 0
-                        spawn_timer = 0
-                        game_state = "playing"
-                        current_question = 0
-                        questions_correct = 0
-                        special_coins = 0
-                        bonus_time = 0
+                return False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN:
+                    return True
+                elif event.key == pygame.K_q:
+                    if ask_exit():
+                        return False
         
-        # อัปเดตเกม
-        if game_state == "playing":
-            # สุ่มสร้างเหรียญ
-            spawn_timer += 1
-            if spawn_timer >= 30:  # ทุก 0.5 วินาที (ที่ 60 FPS)
-                coins.append(Coin())
-                spawn_timer = 0
-            
-            # อัปเดตเหรียญ
-            for coin in coins[:]:
-                if coin.update():
-                    coins.remove(coin)
-                elif chicken.get_rect().colliderect(coin.get_rect()):
-                    coins.remove(coin)
-                    coins_collected += 1
-                    special_coins += 1
-                    
-                    # ทุก 20 เหรียญได้โบนัสเวลา 5 วินาที
-                    if special_coins >= 20:
-                        bonus_time += 5
-                        special_coins = 0
-            
-            # ตรวจสอบว่าเก็บครบ 100 เหรียญหรือยัง
-            if coins_collected >= 100:
-                game_state = "question"
-                question_time = 30 + bonus_time  # เวลาตอบคำถาม 30 วินาที + โบนัส
-            
-            # วาดเกม
-            screen.fill(SKY_BLUE)
-            chicken.draw()
-            for coin in coins:
-                coin.draw()
-            
-            # แสดงข้อมูล
-            draw_text(f"เหรียญ: {coins_collected}/100", font, BLACK, 10, 10)
-            draw_text(f"ตอบถูก: {questions_correct}/3", font, BLACK, 10, 50)
-            draw_text(f"โบนัสเวลา: +{bonus_time}s", font, GREEN, 10, 90)
-            
-            if current_question < 3:
-                draw_text(f"คำถามต่อไป: {current_question + 1}", font, BLACK, WIDTH - 200, 10)
+        screen.fill(LIGHT_BLUE)
         
-        elif game_state == "question":
-            question_time -= 1/60  # ลดเวลาลง (60 FPS)
+        if correct_answers == QUESTIONS_TO_WIN:
+            title_text = big_font.render("ยินดีด้วย คุณชนะแล้ว!", True, GREEN)
+        else:
+            title_text = big_font.render("เสียใจด้วย คุณแพ้แล้ว", True, RED)
             
-            if question_time <= 0:
-                game_state = "game_over"
-            
-            show_question(questions[current_question], question_time, bonus_time)
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3))
+        screen.blit(title_text, title_rect)
         
-        elif game_state == "game_over":
-            if questions_correct >= 3:  # ชนะเกม
-                show_game_over(100, questions_correct)  # ถ้าตอบครบ 3 ข้อ จะมีเหรียญครบ 300 เหรียญ (100 * 3)
-            else:
-                show_game_over(coins_collected, questions_correct)
+        score_text = font.render(f"คะแนน: {score} x {multiplier} = {final_score}", True, BLACK)
+        score_rect = score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+        screen.blit(score_text, score_rect)
+        
+        instruction_text = font.render("กด ENTER เพื่อเล่นใหม่ หรือ Q เพื่อออก", True, BLACK)
+        instruction_rect = instruction_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT * 2 // 3))
+        screen.blit(instruction_text, instruction_rect)
         
         pygame.display.flip()
         clock.tick(60)
-    
-    pygame.quit()
-    sys.exit()
+
+def ask_exit():
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return True
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_y:
+                    return True
+                elif event.key == pygame.K_n:
+                    return False
+                
+        screen.fill(LIGHT_BLUE)
+        
+        question_text = font.render("คุณต้องการออกจากเกมหรือไม่? (Y/N)", True, BLACK)
+        question_rect = question_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+        screen.blit(question_text, question_rect)
+        
+        pygame.display.flip()
+        clock.tick(60)
+
+# ฟังก์ชันหลัก
+def main():
+    while True:
+        # เริ่มเกมใหม่
+        chicken = Chicken()
+        platforms, coins, obstacles = create_level()
+        coins_collected = 0
+        question_index = 0
+        correct_answers = 0
+        coins_collected_since_bonus = 0
+        bonus_time = 0
+        
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    if ask_exit():
+                        return
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP or event.key == pygame.K_SPACE:
+                        chicken.jump()
+                    elif event.key == pygame.K_q:
+                        if ask_exit():
+                            return
+            
+            # อัพเดทตัวละคร
+            keys = pygame.key.get_pressed()
+            if not chicken.update(keys, platforms):
+                # ตกหลุม
+                if game_over_screen(coins_collected, 0):
+                    break  # เล่นใหม่
+                else:
+                    return  # ออกจากเกม
+            
+            # อัพเดทกล้อง
+            camera_x = chicken.world_x - chicken.x
+            
+            # วาดพื้นหลัง
+            screen.fill(LIGHT_BLUE)
+            
+            # วาดแพลตฟอร์ม
+            visible_platforms = []
+            for platform in platforms:
+                if platform.update(camera_x):
+                    visible_platforms.append(platform)
+                    platform.draw(screen)
+            
+            # วาดอุปสรรค
+            for obstacle in obstacles:
+                if obstacle.update(camera_x):
+                    obstacle.draw(screen)
+                    
+                    # ตรวจสอบการชนกับอุปสรรค
+                    if chicken.rect.colliderect(obstacle.rect):
+                        if game_over_screen(coins_collected, 0):
+                            running = False
+                            break  # เล่นใหม่
+                        else:
+                            return  # ออกจากเกม
+            
+            # อัพเดทและวาดเหรียญ
+            coins_to_remove = []
+            for coin in coins:
+                if coin.update(camera_x):
+                    coin.draw(screen)
+                    
+                    # ตรวจสอบการชนกับเหรียญ
+                    if not coin.collected and chicken.rect.colliderect(coin.rect):
+                        coin.collected = True
+                        coins_collected += 1
+                        coins_collected_since_bonus += 1
+                        coins_to_remove.append(coin)
+                        
+                        # ตรวจสอบโบนัสเวลา
+                        if coins_collected_since_bonus >= COINS_FOR_BONUS:
+                            bonus_time += BONUS_TIME
+                            coins_collected_since_bonus = 0
+            
+            # ลบเหรียญที่เก็บแล้ว
+            for coin in coins_to_remove:
+                coins.remove(coin)
+            
+            # วาดตัวละคร
+            chicken.draw(screen)
+            
+            # ตรวจสอบว่าเก็บเหรียญครบหรือไม่
+            if coins_collected >= COIN_COUNT:
+                # แสดงคำถาม
+                if question_screen(question_index, bonus_time):
+                    # ตอบถูก
+                    correct_answers += 1
+                    question_index += 1
+                    bonus_time = 0
+                    
+                    # ตรวจสอบว่าตอบคำถามครบหรือไม่
+                    if question_index >= QUESTIONS_TO_WIN:
+                        if game_over_screen(coins_collected, correct_answers):
+                            break  # เล่นใหม่
+                        else:
+                            return  # ออกจากเกม
+                    else:
+                        # สร้างด่านใหม่
+                        chicken = Chicken()
+                        platforms, coins, obstacles = create_level()
+                        coins_collected = 0
+                        coins_collected_since_bonus = 0
+                else:
+                    # ตอบผิดหรือหมดเวลา
+                    if game_over_screen(coins_collected, correct_answers):
+                        break  # เล่นใหม่
+                    else:
+                        return  # ออกจากเกม
+            
+            # แสดงคะแนน
+            score_text = font.render(f"เหรียญ: {coins_collected}/{COIN_COUNT}", True, BLACK)
+            screen.blit(score_text, (20, 20))
+            
+            # แสดงโบนัสเวลา
+            if bonus_time > 0:
+                bonus_text = font.render(f"โบนัสเวลา: +{bonus_time // 1000} วินาที", True, BLACK)
+                screen.blit(bonus_text, (20, 60))
+            
+            # แสดงคำถามที่ตอบถูก
+            question_text = font.render(f"คำถามที่ตอบถูก: {correct_answers}/{QUESTIONS_TO_WIN}", True, BLACK)
+            screen.blit(question_text, (SCREEN_WIDTH - 250, 20))
+            
+            pygame.display.flip()
+            clock.tick(60)
 
 if __name__ == "__main__":
     main()
+    pygame.quit()
+    sys.exit()
